@@ -121,3 +121,12 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
     println("finishing $(mP)")
     return res
 end
+
+function new_λ_from_c2(c2_res, impQ_sp, impQ_ch, FUpDo, Σ_loc, Σ_ladder_loc, nlQ_sp, nlQ_ch_λ, bubble, gLoc_fft, kG, mP, sP)
+	λch = find_zero(c2_res[:,2], c2_res[:,5] .- c2_res[:,6])
+	nlQ_ch_λ = deepcopy(nlQ_ch)
+	nlQ_ch_λ.χ = LadderDGA.χ_λ(nlQ_ch.χ, λch)
+	nlQ_ch_λ.λ = λch
+	λsp = LadderDGA.λ_correction(:sp,impQ_sp, impQ_ch, FUpDo, Σ_loc, Σ_ladder_loc, nlQ_sp, nlQ_ch_λ, bubble, gLoc_fft, kG, mP, sP)
+    λsp, λch
+end

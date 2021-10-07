@@ -46,11 +46,7 @@ flush(stdout)
         flush(stdout)
         #TODO: cfg from in_file, kIteration also
         impQ_sp, impQ_ch, _, _, kG, _, gLoc_fft, Σ_loc, FUpDo = setup_LDGA(("3Dsc-0.2041241452319315", parse(Int,Nk)), mP, sP, env);
-        println("lsp of lch next")
-        flush(stdout)
-        λch_range, spOfch = λsp_of_λch(in_f["nlQ_sp"], in_f["nlQ_ch"], kG, mP, sP, max_λsp=30.0, λch_max=20.0, n_λch=100)
-        println("c2 next")
-        flush(stdout)
+        λch_range, spOfch = λsp_of_λch(in_f["nlQ_sp"], in_f["nlQ_ch"], kG, mP, sP, max_λsp=30.0, λch_max=20.0, n_λch=200)
         res = c2_along_λsp_of_λch(λch_range, spOfch, in_f["nlQ_sp"], in_f["nlQ_ch"],
                             in_f["bubble"], in_f["Sigma_loc"], Σ_loc,
                             gLoc_fft, FUpDo, kG, mP, sP)
