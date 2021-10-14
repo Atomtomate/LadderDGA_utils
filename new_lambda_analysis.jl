@@ -60,7 +60,7 @@ end
 function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::AbstractArray{Float64,1},
                         nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, bubble::BubbleT,
                         Σ_ladderLoc, Σ_loc,
-                        GLoc_fft::GνqT, FUpDo::AbstractArray{Complex{Float64},3}, kG::ReducedKGrid,
+                        Gνω::GνqT, FUpDo::AbstractArray{Complex{Float64},3}, kG::ReducedKGrid,
                         mP::ModelParameters, sP::SimulationParameters)
     println("starting $(mP)")
     println(stderr,"starting $(mP)")
@@ -74,9 +74,9 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
     if νmax > 5
         # --- prepare auxiliary vars ---
         Kνωq = Array{ComplexF64, length(gridshape(kG))}(undef, gridshape(kG)...)
-        Kνωq_pre = Array{ComplexF64, 1}(undef, size(bubble,q_axis))
+        Kνωq_pre = Array{ComplexF64, 1}(undef, size(bubble,LadderDGA.q_axis))
         νGrid = 0:(νmax-1)
-        iν_n = iν_array(mP.β, νGrid)
+        iν_n = LadderDGA.iν_array(mP.β, νGrid)
         iωn = 1im .* 2 .* (-sP.n_iω:sP.n_iω)[ωindices] .* π ./ mP.β
         iωn2_sub = real.([i == 0 ? 0 : mP.Ekin_DMFT / (i)^2 for i in iωn])
         nd = length(gridshape(kG))
@@ -111,8 +111,8 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
                 ωn = (ωi - sP.n_iω) - 1
                 fsp = 1.5 .* (1 .+ mP.U .* view(χsp_λ,:,ωii))
                 fch = 0.5 .* (1 .- mP.U .* view(χch_λ,:,ωii))
-                νZero = ν0Index_of_ωIndex(ωi, sP)
-                maxn = minimum([νZero + νmax - 1, size(nlQ_ch.γ,ν_axis)])
+                νZero = LadderDGA.ν0Index_of_ωIndex(ωi, sP)
+                maxn = minimum([νZero + νmax - 1, size(nlQ_ch.γ, LadderDGA.ν_axis)])
                 for (νi,νn) in enumerate(νZero:maxn)
                     v = selectdim(Gνω,nd+1,(νi-1) + ωn + sP.fft_offset)
                     @simd for qi in 1:length(Kνωq_pre)
@@ -142,7 +142,7 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
                 GΣ_λ = 0.0
                 for i in 1:νmax
                     Σ_ladder_i[qi,i] += Σ_corr[i]
-                    GΣ_λ += 2 * real(Σ_ladder_i[qi,i] * G_from_Σ(iν_n[i], mP.β, mP.μ, kG.ϵkGrid[qi], Σ_ladder_i[qi,i]) - E_pot_tail[qi,i])
+                    GΣ_λ += 2 * real(Σ_ladder_i[qi,i] * LadderDGA.G_from_Σ(iν_n[i], mP.β, mP.μ, kG.ϵkGrid[qi], Σ_ladder_i[qi,i]) - E_pot_tail[qi,i])
 
                 end
                 GΣ_λ += E_pot_tail_inv[qi]   # ν summation
@@ -155,9 +155,9 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
             rhs_c2 = E_pot/mP.U - (mP.n/2) * (mP.n/2)
             res[i,:] = [λ[1] λ[2] lhs_c1 rhs_c1 lhs_c2 rhs_c2]
         end
+    end
     return res
 end
-
 
 function new_λ_from_c2(c2_res, impQ_sp, impQ_ch, FUpDo, Σ_loc, Σ_ladder_loc, nlQ_sp, nlQ_ch_λ, bubble, gLoc_fft, kG, mP, sP)
     λsp, λch = if size(c2_res,1) >= 1
