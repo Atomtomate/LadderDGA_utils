@@ -18,7 +18,7 @@ using Distributed
 @everywhere using Logging
 
 include("helpers/run_lDGA_dir.jl")
-@everywhere include("new_lambda_analysis.jl")
+@everywhere include("helpers/new_lambda_analysis.jl")
 
 @everywhere dir = $(ARGS[1])
 @everywhere fname_pre = $(ARGS[2])

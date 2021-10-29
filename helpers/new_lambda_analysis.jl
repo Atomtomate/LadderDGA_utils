@@ -1,8 +1,6 @@
 using Dispersions
 using LadderDGA
 
-include((@__DIR__)*"/helpers/new_lambda_helpers.jl")
-
 function find_zero(λch_vals::AbstractVector, c2_curve::AbstractVector)
     yvals = c2_curve
     xvals = λch_vals
@@ -159,15 +157,98 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
     return res
 end
 
-function new_λ_from_c2(c2_res, impQ_sp, impQ_ch, FUpDo, Σ_loc, Σ_ladder_loc, nlQ_sp, nlQ_ch_λ, bubble, gLoc_fft, kG, mP, sP)
+function new_λ_from_c2(c2_res,  imp_dens, FUpDo, Σ_loc, Σ_ladder_loc, nlQ_sp, nlQ_ch, bubble, gLoc_fft, kG, mP, sP)
     λsp, λch = if size(c2_res,1) >= 1
         λch = find_zero(c2_res[:,2], c2_res[:,5] .- c2_res[:,6])
         nlQ_ch_λ = deepcopy(nlQ_ch)
         nlQ_ch_λ.χ = LadderDGA.χ_λ(nlQ_ch.χ, λch)
         nlQ_ch_λ.λ = λch
-        λsp = LadderDGA.λ_correction(:sp,impQ_sp, impQ_ch, FUpDo, Σ_loc, Σ_ladder_loc, nlQ_sp, nlQ_ch_λ, bubble, gLoc_fft, kG, mP, sP)
+        λsp = LadderDGA.λ_correction(:sp, imp_dens, FUpDo, Σ_loc, Σ_ladder_loc, nlQ_sp, nlQ_ch_λ, bubble, gLoc_fft, kG, mP, sP)
+        λsp, λch
     else
         NaN, NaN
     end
     λsp, λch
+end
+
+function filter_usable_λsp_of_λch(λch_range, inp; max_λsp=Inf)
+    tmp = deepcopy(inp)
+    tmp[isnan.(tmp)] .= 0.0
+    tmp[tmp .> max_λsp] .= 0.0
+    findmax(tmp)[2]:length(λch_range)
+end
+
+
+
+function E_pot_test(λsp, λnew, bubble, nlQ_sp, nlQ_ch, Σ_ladder_loc, kn, gLoc, gLoc_fft, Σ_loc, FUpDo, kG, mP, sP)
+    res = try
+    #TODO: DO NOT HARDCODE LATTICE TYPE!!!
+    mP.Epot_DMFT
+    gL = transpose(LadderDGA.flatten_2D(gLoc[sP.fft_offset:(sP.fft_offset+299)]));
+    sL = Array{ComplexF64,2}(undef, length(kG.kMult), 300)
+    for i in 1:300
+        sL[:,i] .= Σ_loc[i]
+    end
+
+    Ek1, Ep1 = calc_E(sL, kG, mP, sP)
+
+    # local
+    #bubbleLoc = calc_bubble(gImp, kGridLoc, mP, sP);
+    #locQ_sp = calc_χ_trilex(impQ_sp.Γ, bubbleLoc, kGridLoc, mP.U, mP, sP);
+    #locQ_ch = calc_χ_trilex(impQ_ch.Γ, bubbleLoc, kGridLoc, -mP.U, mP, sP);
+    #Σ_ladder_loc = calc_Σ(locQ_sp, locQ_ch, bubbleLoc, gImp, FUpDo, kGridLoc, mP, sP)
+    # lambda
+    nlQ_sp_λsp = χ_λ(nlQ_sp, λsp)
+    
+    nlQ_sp_λnew = χ_λ(nlQ_sp, λnew[1])
+    nlQ_ch_λnew = χ_λ(nlQ_ch, λnew[2])
+    
+    # Self energies
+    ωindices = intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
+    νmax = floor(Int,length(ωindices)/3)
+
+    Σ_ladder = calc_Σ(nlQ_sp, nlQ_ch, bubble, gLoc_fft, FUpDo, kG, mP, sP)[:,1:νmax]
+    Σ_ladder = Σ_loc_correction(Σ_ladder, Σ_ladder_loc, Σ_loc);
+    E_kin_lDGA,E_pot_lDGA = LadderDGA.calc_E(Σ_ladder, kG, mP, sP)
+
+    Σ_ladder_λsp = calc_Σ(nlQ_sp_λsp, nlQ_ch, bubble, gLoc_fft, FUpDo, kG, mP, sP)[:,1:νmax]
+    Σ_ladder_λsp = Σ_loc_correction(Σ_ladder_λsp, Σ_ladder_loc, Σ_loc);
+    E_kin_lDGA_λsp, E_pot_lDGA_λsp = LadderDGA.calc_E(Σ_ladder_λsp, kG, mP, sP)
+
+    Σ_ladder_λnew = calc_Σ(nlQ_sp_λnew, nlQ_ch_λnew, bubble, gLoc_fft, FUpDo, kG, mP, sP)[:,1:νmax]
+    Σ_ladder_λnew = Σ_loc_correction(Σ_ladder_λnew, Σ_ladder_loc, Σ_loc);
+    E_kin_lDGA_λnew, E_pot_lDGA_λnew = LadderDGA.calc_E(Σ_ladder_λnew, kG, mP, sP)
+
+    
+    # chi
+    χupdo_ω = real.(kintegrate(kG, nlQ_ch.χ .- nlQ_sp.χ, 1)[1,ωindices])
+    E_pot3 = real(sum(χupdo_ω)/(2*mP.β)) + (mP.n/2)^2
+
+    χupdo_λsp_ω = real.(kintegrate(kG, nlQ_ch.χ .- nlQ_sp_λsp.χ, 1)[1,ωindices])
+    E_pot3_λsp = real(sum(χupdo_λsp_ω)/(2*mP.β)) + (mP.n/2)^2
+    
+    χupdo_λnew_ω = real.(kintegrate(kG, nlQ_ch_λnew.χ .- nlQ_sp_λnew.χ, 1)[1,ωindices])
+    E_pot3_λnew = real(sum(χupdo_λnew_ω)/(2*mP.β)) + (mP.n/2)^2
+
+    println("\n ============================================= \n")
+    println(mP)
+    println("U<n_up n_do >                 = $(mP.Epot_DMFT)")
+    println("∑_ν G_loc Σ_loc               = $(Ep1)")
+    println("1/(β U) ∑_ν G_{λ=0} Σ_{λ=0}   = $(E_pot_lDGA/mP.U)")
+    println("∑_{ωq} χ^{λ=0}_{updo} + n²/4  = $(E_pot3)")
+    println("1/(β U) ∑_ν G_λsp Σ_λsp       = $(E_pot_lDGA_λsp/mP.U)")
+    println("∑_{ωq} χ^{λsp}_{updo} + n²/4  = $(E_pot3_λsp)")
+    println("1/(β U) ∑_ν G_λnew Σ_λnew     = $(E_pot_lDGA_λnew/mP.U)")
+    println("∑_{ωq} χ^{λnew}_{updo} + n²/4 = $(E_pot3_λnew)")
+    println(" ============================================= \n")
+        [mP.U, mP.β, kG.Ns, 
+         mP.Epot_DMFT, Ep1, 
+         E_pot_lDGA/mP.U, E_pot3, E_pot_lDGA_λsp/mP.U, E_pot3_λsp, E_pot_lDGA_λnew/mP.U, E_pot3_λnew,
+         nlQ_sp.χ, nlQ_ch.χ]
+    catch e
+        println(stderr, "caught error: ", e)
+        [mP.U, mP.β, kG.Ns, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN,
+         Matrix{ComplexF64}[], Matrix{ComplexF64}[]]
+    end
+    return res
 end

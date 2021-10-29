@@ -14,7 +14,7 @@ using TOML
 using LadderDGA
 using DataFrames
 using NLsolve
-include("helpers/new_lambda_helpers.jl")
+include((@__DIR__)*"/helpers/new_lambda_analysis.jl")
 
 
 dir = ARGS[1]
@@ -24,8 +24,8 @@ out_fname = ARGS[3]
 df = DataFrame(β = Float64[], U = Float64[], Nk = Int[], tc=Symbol[],
                χsp = Matrix{ComplexF64}[], χch = Matrix{ComplexF64}[], 
                λch_range = Vector{Float64}[], spOfch = Vector{Float64}[], λsp_of_λch_res = Matrix{Float64}[], 
-               λsp = Float64[], λnew_sp = Float64[], λnew_ch = Float64[], λnew_converged = Bool[],
-               λsp_EPot_intern = Float64[], λnew_sp_EPot_intern = Float64[], λnew_ch_EPot_intern = Float64[],
+               λsp = Float64[], λnew_sp = Float64[], λnew_ch = Float64[], 
+               λnew_sp_nls = Float64[], λnew_ch_nls = Float64[],
                EPot_direct_DMFT = Float64[], EPot_GS_DMFT = Float64[],
                EPot_chi_λ0 = Float64[], EPot_GS_λ0 = Float64[],
                EPot_chi_λsp = Float64[], EPot_GS_λsp = Float64[],
@@ -43,14 +43,17 @@ for (root, dirs, files) in walkdir(dir)
             if m !== nothing
                 kn = parse(Int,m[:kn])     
                 #TODO: DO NOT HARDCODE LATTICE TYPE!!!
+                kG = gen_kGrid("3Dsc-0.2041241452319315", kn)
                 jldopen(joinpath(root, file), "r") do f
-                    rr = E_pot_test(f["bubble"], f["impQ_sp"], f["impQ_ch"], f["nlQ_sp"], f["nlQ_ch"], f["Sigma_loc"], kn, f["gLoc"], f["gLoc_fft"], f["Sigma_DMFT"], f["FUpDo"], f["mP"], f["sP"])
-                    res_nls = f["λnew_nls"]
+                    λnew = new_λ_from_c2(f["λsp_of_λch_res"], f["imp_density"], f["FUpDo"], f["Sigma_DMFT"], f["Sigma_loc"], 
+                                         f["nlQ_sp"], f["nlQ_ch"], f["bubble"], f["gLoc_fft"], kG, f["mP"], f["sP"])
+                    rr = E_pot_test(f["λsp_old"], λnew, f["bubble"], f["nlQ_sp"], f["nlQ_ch"], f["Sigma_loc"], 
+                                    kn, f["gLoc"], f["gLoc_fft"], f["Sigma_DMFT"], f["FUpDo"], kG, f["mP"], f["sP"])
+                    λnew_nls = f["λnew_nls"]
                     r = [f["mP"].β, f["mP"].U, f["kG"].Ns, f["sP"].tc_type_f,
                          f["nlQ_sp"].χ, f["nlQ_ch"].χ,
-                         collect(f["λch_range"]), f["spOfch"], f["λsp_of_λch_res"], f["λsp_old"], 
-                         res_nls.zero..., res_nls.f_converged, 
-                         rr[4:(end-2)]...,
+                         collect(f["λch_range"]), f["spOfch"], f["λsp_of_λch_res"],
+                         f["λsp_old"], λnew..., λnew_nls.zero..., rr[4:(end-2)]...,
                          f["config"], f["log"]]
                     push!(df, r)
                 end
