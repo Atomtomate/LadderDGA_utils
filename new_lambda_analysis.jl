@@ -56,36 +56,35 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
 end
 
 function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::AbstractArray{Float64,1},
-                        nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, bubble::BubbleT,
-                        Σ_ladderLoc, Σ_loc,
-                        Gνω::GνqT, FUpDo::AbstractArray{Complex{Float64},3}, kG::ReducedKGrid,
-                        mP::ModelParameters, sP::SimulationParameters)
+                        nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, bubble::χ₀T,
+                        Σ_ladderLoc::AbstractArray{ComplexF64,2}, Σ_loc::AbstractArray{ComplexF64,1},
+                        Gνω::GνqT, Fsp::AbstractArray{Complex{Float64},3}, locQ_sp::NonLocalQuantities,
+                        kG::ReducedKGrid, mP::ModelParameters, sP::SimulationParameters)
     println("starting $(mP)")
     println(stderr,"starting $(mP)")
     flush(stdout)
     flush(stderr)
     # Prepare data
     res = Array{Float64, 2}(undef, length(λch_range), 6)
-    ωindices = (sP.dbg_full_eom_omega) ? (1:size(bubble,3)) : intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
+    ωindices = (sP.dbg_full_eom_omega) ? (1:size(bubble.data,3)) : intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
     lur = length(ωindices)
     νmax = floor(Int,lur/3)
     if νmax > 5
         # --- prepare auxiliary vars ---
-        Kνωq = Array{ComplexF64, length(gridshape(kG))}(undef, gridshape(kG)...)
-        Kνωq_pre = Array{ComplexF64, 1}(undef, size(bubble,LadderDGA.q_axis))
+        Kνωq_pre = Array{ComplexF64, 1}(undef, size(bubble.data,LadderDGA.q_axis))
         νGrid = 0:(νmax-1)
         iν_n = LadderDGA.iν_array(mP.β, νGrid)
         iωn = 1im .* 2 .* (-sP.n_iω:sP.n_iω)[ωindices] .* π ./ mP.β
         iωn2_sub = real.([i == 0 ? 0 : mP.Ekin_DMFT / (i)^2 for i in iωn])
         nd = length(gridshape(kG))
         
-        Σ_ladder_i = Array{Complex{Float64},2}(undef, size(bubble,1), νmax)
+        Σ_ladder_i = Array{Complex{Float64},2}(undef, size(bubble.data,1), νmax)
         χsp_λ = similar(nlQ_sp.χ[:,ωindices])
         χch_λ = similar(nlQ_ch.χ[:,ωindices])
     
         # Prepare data
-        corr = Σ_correction(ωindices, bubble, FUpDo, sP)
-        nh    = ceil(Int64, size(nlQ_sp.χ,2)/2)
+        λ₀ = calc_λ0(bubble, Fsp, locQ_sp, mP, sP)
+        nh = ceil(Int64, size(nlQ_sp.χ,2)/2)
         χsp_min    = -1 / maximum(real.(nlQ_sp.χ[:,nh]))
         χch_min    = -1 / maximum(real.(nlQ_ch.χ[:,nh]))
 
@@ -114,18 +113,9 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
                 for (νi,νn) in enumerate(νZero:maxn)
                     v = selectdim(Gνω,nd+1,(νi-1) + ωn + sP.fft_offset)
                     @simd for qi in 1:length(Kνωq_pre)
-                        @inbounds Kνωq_pre[qi] = nlQ_sp.γ[qi,νn,ωi] * fsp[qi] - nlQ_ch.γ[qi,νn,ωi] * fch[qi] - 1.5 + 0.5 + corr[qi,νn,ωii]
+                        @inbounds Kνωq_pre[qi] = (mP.U/mP.β)*(nlQ_sp.γ[qi,νn,ωi] * fsp[qi] - nlQ_ch.γ[qi,νn,ωi] * fch[qi] - 1.5 + 0.5 + λ₀[qi,νn,ωii])
                     end
-                    expandKArr!(kG,Kνωq,Kνωq_pre)
-                    Dispersions.mul!(Kνωq, kG.fftw_plan, Kνωq)
-                    @simd for ki in 1:length(Kνωq)
-                        @inbounds Kνωq[ki] *= v[ki]
-                    end
-                    Dispersions.ldiv!(Kνωq, kG.fftw_plan, Kνωq)
-                    reduceKArr!(kG, Kνωq_pre, Dispersions.ifft_post(kG, Kνωq)) 
-                    @simd for i in 1:length(Kνωq_pre)
-                        @inbounds Σ_ladder_i[i,νi] += mP.U * Kνωq_pre[i]/ (kG.Nk*mP.β)
-                    end
+                    conv_fft1!(kG, view(Σ_ladder_i,:,νi), Kνωq_pre, v)
                 end
                 tsp, tch = 0.0, 0.0
                 for qi in 1:length(kG.kMult)
@@ -157,13 +147,13 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
     return res
 end
 
-function new_λ_from_c2(c2_res,  imp_dens, FUpDo, Σ_loc, Σ_ladder_loc, nlQ_sp, nlQ_ch, bubble, gLoc_fft, kG, mP, sP)
+function new_λ_from_c2(c2_res,  imp_dens, Fsp, Σ_loc, Σ_ladder_loc, nlQ_sp, nlQ_ch, locQ_sp, bubble, gLoc_fft, kG, mP, sP)
     λsp, λch = if size(c2_res,1) >= 1
         λch = find_zero(c2_res[:,2], c2_res[:,5] .- c2_res[:,6])
         nlQ_ch_λ = deepcopy(nlQ_ch)
         nlQ_ch_λ.χ = LadderDGA.χ_λ(nlQ_ch.χ, λch)
         nlQ_ch_λ.λ = λch
-        λsp = LadderDGA.λ_correction(:sp, imp_dens, FUpDo, Σ_loc, Σ_ladder_loc, nlQ_sp, nlQ_ch_λ, bubble, gLoc_fft, kG, mP, sP)
+        λsp = LadderDGA.λ_correction(:sp, imp_dens, Fsp, Σ_loc, Σ_ladder_loc, nlQ_sp, nlQ_ch_λ, locQ_sp, bubble, gLoc_fft, kG, mP, sP)
         λsp, λch
     else
         NaN, NaN
@@ -180,7 +170,7 @@ end
 
 
 
-function E_pot_test(λsp, λnew, bubble, nlQ_sp, nlQ_ch, Σ_ladder_loc, kn, gLoc, gLoc_fft, Σ_loc, FUpDo, kG, mP, sP)
+function E_pot_test(λsp, λnew, bubble, nlQ_sp, nlQ_ch, Σ_ladder_loc, kn, gLoc, gLoc_fft, Σ_loc, Fsp, kG, mP, sP)
     res = try
     #TODO: DO NOT HARDCODE LATTICE TYPE!!!
     mP.Epot_DMFT
@@ -196,7 +186,7 @@ function E_pot_test(λsp, λnew, bubble, nlQ_sp, nlQ_ch, Σ_ladder_loc, kn, gLoc
     #bubbleLoc = calc_bubble(gImp, kGridLoc, mP, sP);
     #locQ_sp = calc_χ_trilex(impQ_sp.Γ, bubbleLoc, kGridLoc, mP.U, mP, sP);
     #locQ_ch = calc_χ_trilex(impQ_ch.Γ, bubbleLoc, kGridLoc, -mP.U, mP, sP);
-    #Σ_ladder_loc = calc_Σ(locQ_sp, locQ_ch, bubbleLoc, gImp, FUpDo, kGridLoc, mP, sP)
+    #Σ_ladder_loc = calc_Σ(locQ_sp, locQ_ch, bubbleLoc, gImp, Fsp, kGridLoc, mP, sP)
     # lambda
     nlQ_sp_λsp = χ_λ(nlQ_sp, λsp)
     
@@ -207,15 +197,15 @@ function E_pot_test(λsp, λnew, bubble, nlQ_sp, nlQ_ch, Σ_ladder_loc, kn, gLoc
     ωindices = intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
     νmax = floor(Int,length(ωindices)/3)
 
-    Σ_ladder = calc_Σ(nlQ_sp, nlQ_ch, bubble, gLoc_fft, FUpDo, kG, mP, sP)[:,1:νmax]
+    Σ_ladder = calc_Σ(nlQ_sp, nlQ_ch, bubble, gLoc_fft, Fsp, kG, mP, sP)[:,1:νmax]
     Σ_ladder = Σ_loc_correction(Σ_ladder, Σ_ladder_loc, Σ_loc);
     E_kin_lDGA,E_pot_lDGA = LadderDGA.calc_E(Σ_ladder, kG, mP, sP)
 
-    Σ_ladder_λsp = calc_Σ(nlQ_sp_λsp, nlQ_ch, bubble, gLoc_fft, FUpDo, kG, mP, sP)[:,1:νmax]
+    Σ_ladder_λsp = calc_Σ(nlQ_sp_λsp, nlQ_ch, bubble, gLoc_fft, Fsp, kG, mP, sP)[:,1:νmax]
     Σ_ladder_λsp = Σ_loc_correction(Σ_ladder_λsp, Σ_ladder_loc, Σ_loc);
     E_kin_lDGA_λsp, E_pot_lDGA_λsp = LadderDGA.calc_E(Σ_ladder_λsp, kG, mP, sP)
 
-    Σ_ladder_λnew = calc_Σ(nlQ_sp_λnew, nlQ_ch_λnew, bubble, gLoc_fft, FUpDo, kG, mP, sP)[:,1:νmax]
+    Σ_ladder_λnew = calc_Σ(nlQ_sp_λnew, nlQ_ch_λnew, bubble, gLoc_fft, Fsp, kG, mP, sP)[:,1:νmax]
     Σ_ladder_λnew = Σ_loc_correction(Σ_ladder_λnew, Σ_ladder_loc, Σ_loc);
     E_kin_lDGA_λnew, E_pot_lDGA_λnew = LadderDGA.calc_E(Σ_ladder_λnew, kG, mP, sP)
 
