@@ -2,11 +2,11 @@
     Description:
 Read through directory tree given by ARG1 and search for chi_lDGA output starting with ARG2. 
 Calculate condition for lambda_ch as function of lambda_ch (root of this function is the lDGA 
-value of lambda_ch).
+value of lambda_ch). ARG4 is the number of k-points.
 Results are written to ARG3.
 
     Example:
-julia run_c2_curves.jl /scratch/projects/hhp00048/lDGA/PD/data lDGA_ res
+julia run_c2_curves.jl /scratch/projects/hhp00048/lDGA/PD/data lDGA_ res 
 """
 
 using Distributed
@@ -18,7 +18,7 @@ using Distributed
 @everywhere using Logging
 
 include("helpers/run_lDGA_dir.jl")
-@everywhere include("helpers/new_lambda_analysis.jl")
+@everywhere include("new_lambda_analysis.jl")
 
 @everywhere dir = $(ARGS[1])
 @everywhere fname_pre = $(ARGS[2])
@@ -45,17 +45,17 @@ flush(stdout)
         println("config file read of: $in_file")
         flush(stdout)
         #TODO: cfg from in_file, kIteration also
-        impQ_sp, impQ_ch, _, _, kG, _, gLoc_fft, Σ_loc, FUpDo = setup_LDGA(("3Dsc-0.2041241452319315", parse(Int,Nk)), mP, sP, env);
-        λch_range, spOfch = λsp_of_λch(in_f["nlQ_sp"], in_f["nlQ_ch"], kG, mP, sP, max_λsp=30.0, λch_max=20.0, n_λch=200)
-        res = c2_along_λsp_of_λch(λch_range, spOfch, in_f["nlQ_sp"], in_f["nlQ_ch"],
-                            in_f["bubble"], in_f["Sigma_loc"], Σ_loc,
-                            gLoc_fft, FUpDo, kG, mP, sP)
+         Σ_ladderLoc, Σ_loc, imp_density, kG, gLoc, gLoc_fft, Γsp, Γch, χDMFTsp, χDMFTch, locQ_sp, locQ_ch, χ₀Loc, gImp = setup_LDGA(("3Dsc-0.2041241452319315", parse(Int,Nk)), mP, sP, env);
+         Fsp = F_from_χ(χDMFTsp, gImp[1,:], sP, mP.β);
+         λ₀ = calc_λ0(in_f["bubble"], Fsp, locQ_sp, mP, sP)
+        λch_range, spOfch = λsp_of_λch(in_f["nlQ_sp"], in_f["nlQ_ch"], kG, mP, sP, max_λsp=5.0, λch_max=50.0, n_λch=200)
+        res = c2_along_λsp_of_λch(λch_range, spOfch, in_f["nlQ_sp"], in_f["nlQ_ch"], gLoc_fft, λ₀, kG, mP, sP)
         λch = find_zero(res[:,2], res[:,5] .- res[:,6])
         nlQ_ch_λ = deepcopy(in_f["nlQ_ch"])
         nlQ_ch_λ.χ = LadderDGA.χ_λ(in_f["nlQ_ch"].χ, λch)
         nlQ_ch_λ.λ = λch
-        λsp_new = LadderDGA.λ_correction(:sp,impQ_sp, impQ_ch,  FUpDo, Σ_loc, in_f["Sigma_loc"], in_f["nlQ_sp"], nlQ_ch_λ,
-                               in_f["bubble"], gLoc_fft, kG, mP, sP)
+        λsp_new = LadderDGA.λ_correction(:sp, imp_density, in_f["nlQ_sp"], nlQ_ch_λ,
+                               gLoc_fft, λ₀, kG, mP, sP)
         println("done found lsp,lch = $(λsp_new), $(λch)")
         flush(stdout)
         return res, λsp_new, λch 
