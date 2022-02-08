@@ -45,10 +45,16 @@ flush(stdout)
         println("config file read of: $in_file")
         flush(stdout)
         #TODO: cfg from in_file, kIteration also
-         Σ_ladderLoc, Σ_loc, imp_density, kG, gLoc, gLoc_fft, Γsp, Γch, χDMFTsp, χDMFTch, locQ_sp, locQ_ch, χ₀Loc, gImp = setup_LDGA(("3Dsc-0.2041241452319315", parse(Int,Nk)), mP, sP, env);
-         Fsp = F_from_χ(χDMFTsp, gImp[1,:], sP, mP.β);
-         λ₀ = calc_λ0(in_f["bubble"], Fsp, locQ_sp, mP, sP)
-        λch_range, spOfch = λsp_of_λch(in_f["nlQ_sp"], in_f["nlQ_ch"], kG, mP, sP, max_λsp=5.0, λch_max=50.0, n_λch=200)
+        Σ_ladderLoc, Σ_loc, imp_density, kG, gLoc, gLoc_fft, Γsp, Γch, χDMFTsp, χDMFTch, locQ_sp, locQ_ch, χ₀Loc, gImp = setup_LDGA(("3Dsc-0.2041241452319315", parse(Int,Nk)), mP, sP, env);
+        Fsp = F_from_χ(χDMFTsp, gImp[1,:], sP, mP.β);
+        λ₀ = calc_λ0(in_f["bubble"], Fsp, locQ_sp, mP, sP)
+        λ_int = LadderDGA.extended_λ(nlQ_sp, nlQ_ch, gLoc_fft, λ₀, kG, mP, sP, iterations=20, ftol=1e-5)
+        fine_grid, λnew_nlsolve = if λ_int.f_converged
+            range(λ_int.zero[2] - 0.1*λ_int.zero[2], λ_int.zero[2] + 0.1*λ_int.zero[2], 4), λ_int.zero
+        else
+            [], [NaN, NaN]
+        end
+        λch_range, spOfch = λsp_of_λch(in_f["nlQ_sp"], in_f["nlQ_ch"], kG, mP, sP, max_λsp=5.0, λch_max=50.0, n_λch=50, fine_grid=fine_grid)
         res = c2_along_λsp_of_λch(λch_range, spOfch, in_f["nlQ_sp"], in_f["nlQ_ch"], gLoc_fft, λ₀, kG, mP, sP)
         λch = find_zero(res[:,2], res[:,5] .- res[:,6])
         nlQ_ch_λ = deepcopy(in_f["nlQ_ch"])
@@ -58,7 +64,7 @@ flush(stdout)
                                gLoc_fft, λ₀, kG, mP, sP)
         println("done found lsp,lch = $(λsp_new), $(λch)")
         flush(stdout)
-        return res, λsp_new, λch 
+        return res, λsp_new, λch, λnew_nlsolve[1], λnew_nlsolve[2]
     end
 end
 
@@ -108,6 +114,8 @@ jldopen(out_fname,"a+") do f_out
             f_out["$U@$beta/$Nk/res"] = res[j][1]
             f_out["$U@$beta/$Nk/λsp"] = res[j][2]
             f_out["$U@$beta/$Nk/λch"] = res[j][3]
+            f_out["$U@$beta/$Nk/λsp_nlsolve"] = res[j][4]
+            f_out["$U@$beta/$Nk/λch_nlsolve"] = res[j][5]
             f_out["$U@$beta/$Nk/λsp_old"] = f_in["λsp_old"]
         end
     end

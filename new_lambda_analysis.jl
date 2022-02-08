@@ -25,14 +25,14 @@ function find_epot(λch_vals, c2_curve, res)
     return res[sc_ind-1,5], res[sc_ind-1,6], res[sc_ind,5], res[sc_ind,6]
 end
 
-function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG, mP, sP; max_λsp=30.0, λch_max=1.0, n_λch=20)
+function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG, mP, sP; max_λsp=10.0, λch_max=10.0, n_λch=50, fine_grid=[])
     ωindices = (sP.dbg_full_eom_omega) ? (1:size(nlQ_sp.χ,2)) : intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
     iωn = 1im .* 2 .* (-sP.n_iω:sP.n_iω)[ωindices] .* π ./ mP.β
     nh  = ceil(Int64, size(nlQ_sp.χ,2)/2)
     χsp_min    = -minimum(1 ./ real.(nlQ_sp.χ[:,nh]))
     χch_min    = -minimum(1 ./ real.(nlQ_ch.χ[:,nh]))
 
-    λch_range = sort(union(range(χch_min,λch_max,n_λch), [0]))
+    λch_range = Float64.(sort(union(range(χch_min,λch_max,n_λch), [0], fine_grid)))
     spOfch_max_nl = zeros(length(λch_range))
 
     χsp_nλ_r = real.(deepcopy(nlQ_sp.χ[:,ωindices]))
