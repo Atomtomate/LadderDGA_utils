@@ -1,4 +1,3 @@
-using Dispersions
 using LadderDGA
 
 function find_zero(λch_vals::AbstractVector, c2_curve::AbstractVector)
@@ -58,7 +57,7 @@ end
 function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::AbstractArray{Float64,1},
                         nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities,
                         Gνω::GνqT, λ₀::AbstractArray{ComplexF64,3}, 
-                        kG::ReducedKGrid, mP::ModelParameters, sP::SimulationParameters)
+                        kG, mP::ModelParameters, sP::SimulationParameters)
     println("starting $(mP)")
     println(stderr,"starting $(mP)")
     flush(stdout)

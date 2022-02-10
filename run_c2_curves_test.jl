@@ -9,24 +9,27 @@ Results are written to ARG3.
 julia run_c2_curves.jl /scratch/projects/hhp00048/lDGA/PD/data lDGA_ res 
 """
 
-using Distributed
-@everywhere using Pkg
-@everywhere Pkg.activate("/scratch/projects/hhp00048/codes/LadderDGA.jl",io=devnull)
-@everywhere using LadderDGA
-@everywhere using Dispersions
-@everywhere using TOML
-@everywhere using JLD2
-@everywhere using Logging
-@everywhere using FFTW
-@everywhere using Setfield
+using Pkg
+Pkg.activate("/scratch/projects/hhp00048/codes/LadderDGA.jl",io=devnull)
+using LadderDGA
+using Dispersions
+using TOML
+using JLD2
+using Logging
+using FFTW
+using Setfield
 
 include("helpers/run_lDGA_dir.jl")
-@everywhere include("new_lambda_analysis.jl")
+include("new_lambda_analysis.jl")
 
-@everywhere dir = $(ARGS[1])
-@everywhere fname_pre = $(ARGS[2])
-@everywhere out_fname = $(ARGS[3])
-@everywhere Nk = $(ARGS[4])
+#TODO: workaround until kGrid Serialization is completed
+#import Base.convert
+#convert(::Type{Dispersions.ReducedKGrid_cP{D}}, kG) where D = Dispersions.ReducedKGrid_cP{D}(kG.Nk,kG.Ns,kG.t,kG.kInd,kG.kMult,kG.kGrid,kG.ϵkGrid,kG.expand_perms,kG.expand_cache,plan_fft!(Array{Complex{Float64}}(undef, repeat([kG.Nk], D)...), flags=FFTW.ESTIMATE, timelimit=Inf))
+
+dir = (ARGS[1])
+fname_pre = (ARGS[2])
+out_fname = (ARGS[3])
+Nk = (ARGS[4])
 println(ARGS)
 flush(stdout)
 
@@ -39,7 +42,7 @@ flush(stdout)
 #end
 #TODO: ARGS[4] is a workaround, because some result files to not have the proper format yet
 
-@everywhere function run_c2_curves(in_file)
+function run_c2_curves(in_file)
     println("starting with $in_file")
     flush(stdout)
     jldopen(in_file, "r") do in_f
@@ -47,10 +50,22 @@ flush(stdout)
         mP, sP, env, kGridsStr = readConfig(cfg);
         println("config file read of: $in_file")
         flush(stdout)
-        #TODO: cfg from in_file, kIteration also
+        #TODO: workaround until kGrid Serialization is completed
+        #kG = convert(Dispersions.ReducedKGrid_cP{3},in_f["kG"])
         kG = in_f["kG"]
+        println("1")
+        #println(kG.fftw_plan)
+        println("2")
         p = plan_fft!(Array{ComplexF64}(undef, gridshape(kG)...), flags=FFTW.ESTIMATE, timelimit=Inf)
         kG = @set kG.fftw_plan = p
+        println("3: ", p)
+        println("4: ", kG.fftw_plan)
+        println("5")
+        tt = convert.(ComplexF64,kG.ϵkGrid)
+        tt_res = similar(tt)
+        println("after tt")
+        conv!(kG, tt_res, tt, tt)
+        println("after conv")
 
         λ₀ = if haskey(in_f, "λ₀_sp")
             in_f["λ₀_sp"]
@@ -59,6 +74,9 @@ flush(stdout)
             Fsp = F_from_χ(in_f["χDMFTsp"], in_f["gImp"][1,:], sP, mP.β);
             calc_λ0(in_f["bubble"], in_f["Fsp"], locQ_sp, mP, sP)
         end
+        println("ttt")
+        flush(stdout)
+        println(typeof(kG))
         λ_int = LadderDGA.extended_λ(in_f["nlQ_sp"], in_f["nlQ_ch"], in_f["gLoc_fft"], λ₀, kG, mP, sP, iterations=20, ftol=1e-5)
         fine_grid, λnew_nlsolve = if λ_int.f_converged
             println("nlsolve converged, found: $(λ_int.zero)")
@@ -70,13 +88,13 @@ flush(stdout)
             [], [NaN, NaN]
         end
         λch_range, spOfch = λsp_of_λch(in_f["nlQ_sp"], in_f["nlQ_ch"], kG, mP, sP, max_λsp=5.0, λch_max=10.0, n_λch=50, fine_grid=fine_grid)
-        res = c2_along_λsp_of_λch(λch_range, spOfch, in_f["nlQ_sp"], in_f["nlQ_ch"], in_f["gLoc_fft"], λ₀, kG, mP, sP)
+        res = c2_along_λsp_of_λch(λch_range, spOfch, in_f["nlQ_sp"], in_f["nlQ_ch"], gLoc_fft, λ₀, kG, mP, sP)
         λch = find_zero(res[:,2], res[:,5] .- res[:,6])
         nlQ_ch_λ = deepcopy(in_f["nlQ_ch"])
         nlQ_ch_λ.χ = LadderDGA.χ_λ(in_f["nlQ_ch"].χ, λch)
         nlQ_ch_λ.λ = λch
         λsp_new = LadderDGA.λ_correction(:sp, in_f["imp_density"], in_f["nlQ_sp"], nlQ_ch_λ,
-                                         in_f["gLoc_fft"], λ₀, kG, mP, sP)
+                               gLoc_fft, λ₀, kG, mP, sP)
         println("c2 for β=$(mP.β), U=$(mP.U) done. found λsp, λch = $(λsp_new), $(λch)")
         flush(stdout)
         return res, λsp_new, λch, λnew_nlsolve[1], λnew_nlsolve[2]
@@ -100,12 +118,10 @@ end
 println("constructed list of files: ")
 println(res_paths)
 flush(stdout)
-#println(res_f)
-#res = fetch.(res_f)
-#push!(res_f, @spawnat :any run_c2_curves(joinpath(path,in_file)))
-res = nprocs() > 1 ? pmap(run_c2_curves, res_paths) : map(run_c2_curves, res_paths)
+for path in res_paths
+    run_c2_curves(path)
+end
 println("------")
-#println(res)
 
 
 jldopen(out_fname,"a+") do f_out
