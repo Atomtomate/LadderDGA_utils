@@ -43,23 +43,16 @@ flush(stdout)
     println("starting with $in_file")
     flush(stdout)
     jldopen(in_file, "r") do in_f
-        cfg = in_f["config"]
-        mP, sP, env, kGridsStr = readConfig(cfg);
-        println("config file read of: $in_file")
-        flush(stdout)
-        #TODO: cfg from in_file, kIteration also
+        mP = in_f["mP"]
+        sP = in_f["sP"]
         kG = in_f["kG"]
         p = plan_fft!(Array{ComplexF64}(undef, gridshape(kG)...), flags=FFTW.ESTIMATE, timelimit=Inf)
         kG = @set kG.fftw_plan = p
+        λ₀ = in_f["λ₀_sp"]
 
-        λ₀ = if haskey(in_f, "λ₀_sp")
-            in_f["λ₀_sp"]
-        else
-            _, _, imp_density, kG, _, _, _, _, χDMFTsp, _, locQ_sp, _, _, gImp = setup_LDGA(("3Dsc-0.2041241452319315", parse(Int,Nk)), mP, sP, env);
-            Fsp = F_from_χ(in_f["χDMFTsp"], in_f["gImp"][1,:], sP, mP.β);
-            calc_λ0(in_f["bubble"], in_f["Fsp"], locQ_sp, mP, sP)
-        end
+        #TODO: or read this...
         λ_int = LadderDGA.extended_λ(in_f["nlQ_sp"], in_f["nlQ_ch"], in_f["gLoc_fft"], λ₀, kG, mP, sP, iterations=20, ftol=1e-5)
+
         fine_grid, λnew_nlsolve = if λ_int.f_converged
             println("nlsolve converged, found: $(λ_int.zero)")
             flush(stdout)
