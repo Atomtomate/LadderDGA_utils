@@ -56,13 +56,13 @@ flush(stdout)
         fine_grid, λnew_nlsolve = if λ_int.f_converged
             println("nlsolve converged, found: $(λ_int.zero)")
             flush(stdout)
-            range(λ_int.zero[2] - 0.1*λ_int.zero[2], λ_int.zero[2] + 0.1*λ_int.zero[2], 4), λ_int.zero
+            range(λ_int.zero[2] - 0.1*λ_int.zero[2], λ_int.zero[2] + 0.1*λ_int.zero[2], 20), λ_int.zero
         else
             println("nlsolve not converged")
             flush(stdout)
             [], [NaN, NaN]
         end
-        λch_range, spOfch = λsp_of_λch(in_f["nlQ_sp"], in_f["nlQ_ch"], kG, mP, sP, max_λsp=5.0, λch_max=10.0, n_λch=50, fine_grid=fine_grid)
+        λch_range, spOfch = λsp_of_λch(in_f["nlQ_sp"], in_f["nlQ_ch"], kG, mP, sP, max_λsp=5.0, λch_max=10.0, n_λch=50-length(fine_grid), fine_grid=fine_grid)
         res = c2_along_λsp_of_λch(λch_range, spOfch, in_f["nlQ_sp"], in_f["nlQ_ch"], in_f["gLoc_fft"], λ₀, kG, mP, sP)
         λch = find_zero(res[:,2], res[:,5] .- res[:,6])
         nlQ_ch_λ = deepcopy(in_f["nlQ_ch"])

@@ -31,6 +31,8 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
     χsp_min    = -minimum(1 ./ real.(nlQ_sp.χ[:,nh]))
     χch_min    = -minimum(1 ./ real.(nlQ_ch.χ[:,nh]))
 
+    println(collect(range(χch_min,λch_max,n_λch)))
+    println(collect(fine_grid))
     λch_range = Float64.(sort(union(range(χch_min,λch_max,n_λch), [0], fine_grid)))
     spOfch_max_nl = zeros(length(λch_range))
 
@@ -47,7 +49,8 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
         λ = λsp(χsp_nλ_r, iωn, mP.Ekin_DMFT, rhs_val, kG, mP)
         spOfch_max_nl[λi] = λ
     end;
-
+    println(λch_range)
+    println(spOfch_max_nl)
     λch_range_filtered = filter_usable_λsp_of_λch(λch_range, spOfch_max_nl; max_λsp=max_λsp)
     λch_range_f = λch_range[λch_range_filtered]
     spOfch_f = spOfch_max_nl[λch_range_filtered]
@@ -105,11 +108,13 @@ function new_λ_from_c2(c2_res, imp_dens, nlQ_sp, nlQ_ch, locQ_sp, gLoc_fft, λ�
     λsp, λch
 end
 
-function filter_usable_λsp_of_λch(λch_range, inp; max_λsp=Inf)
-    tmp = deepcopy(inp)
-    tmp[isnan.(tmp)] .= 0.0
-    tmp[tmp .> max_λsp] .= 0.0
-    findmax(tmp)[2]:length(λch_range)
+function filter_usable_λsp_of_λch(λch_range, λsp_of_λch_data; max_λsp=Inf)
+    #TODO: old version., why findmax??? 
+    #tmp[isnan.(tmp)] .= 0.0
+    #tmp[tmp .> max_λsp] .= 0.0
+    #findmax(tmp)[2]:length(λch_range)
+    tmp = deepcopy(λsp_of_λch_data)
+    tmp = filter(x-> !isnan(x) && x < max_λsp, tmp)
 end
 
 
