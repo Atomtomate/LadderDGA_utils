@@ -62,7 +62,7 @@ flush(stdout)
             flush(stdout)
             [], [NaN, NaN]
         end
-        λch_range, spOfch = λsp_of_λch(in_f["nlQ_sp"], in_f["nlQ_ch"], kG, mP, sP, λsp_max=5.0, λch_max=40.0, n_λch=70-length(fine_grid), fine_grid=fine_grid)
+        λch_range, spOfch = λsp_of_λch(in_f["nlQ_sp"], in_f["nlQ_ch"], kG, mP, sP, λsp_max=7.0, λch_max=100.0, n_λch=50-length(fine_grid), fine_grid=fine_grid)
         res = c2_along_λsp_of_λch(λch_range, spOfch, in_f["nlQ_sp"], in_f["nlQ_ch"], in_f["gLoc_fft"], λ₀, kG, mP, sP)
         λch = find_zero(res[:,2], res[:,5] .- res[:,6])
         nlQ_ch_λ = deepcopy(in_f["nlQ_ch"])

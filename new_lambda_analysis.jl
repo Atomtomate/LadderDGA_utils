@@ -3,13 +3,13 @@ using LadderDGA
 function find_zero(λch_vals::AbstractVector, c2_curve::AbstractVector)
     yvals = c2_curve
     xvals = λch_vals
-    sc_ind = findfirst(x->x<0,sign.(yvals))
+    sc_ind = findlast(x -> x == -2, diff(sign.(c2_curve)))
     (sc_ind == nothing) && return Inf
     (sc_ind == 1) && return -Inf
-    y1 = yvals[sc_ind-1]
-    y2 = yvals[sc_ind]
-    x1 = xvals[sc_ind-1]
-    x2 = xvals[sc_ind]
+    y1 = yvals[sc_ind]
+    y2 = yvals[sc_ind+1]
+    x1 = xvals[sc_ind]
+    x2 = xvals[sc_ind+1]
     m = (y2-y1)/(x2-x1)
     x0 = x1 - y1/m
 end
@@ -18,18 +18,25 @@ function find_epot(λch_vals, c2_curve, res)
     rrr = []
     yvals = c2_curve
     xvals = λch_vals
-    sc_ind = findfirst(x->x<0,sign.(yvals))
+    sc_ind = findlast(x -> x == -2, diff(sign.(c2_curve)))
     (sc_ind == nothing) && return [NaN, NaN, NaN, NaN]
     (sc_ind == 1) && return [NaN, NaN, NaN, NaN]
-    return res[sc_ind-1,5], res[sc_ind-1,6], res[sc_ind,5], res[sc_ind,6]
+    return res[sc_ind,5], res[sc_ind,6], res[sc_ind+1,5], res[sc_ind+1,6]
 end
 
 function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG, mP, sP; λsp_max=20.0, λch_max=30.0, n_λch=50, fine_grid=[])
     ωindices = (sP.dbg_full_eom_omega) ? (1:size(nlQ_sp.χ,2)) : intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
     iωn = 1im .* 2 .* (-sP.n_iω:sP.n_iω)[ωindices] .* π ./ mP.β
     nh  = ceil(Int64, size(nlQ_sp.χ,2)/2)
+    #TODO: find reason for extremely large χch_min at U>3
     χsp_min    = -minimum(1 ./ real.(nlQ_sp.χ[:,nh]))
     χch_min    = -minimum(1 ./ real.(nlQ_ch.χ[:,nh]))
+    χch_min = if χch_min > 20
+        println("WARNING: found χ inv min = $χch_min. Resetting to -100!")
+        -100.0
+    else
+        χch_min
+    end
 
     λch_range = Float64.(sort(union(range(χch_min,λch_max,n_λch), [0], fine_grid)))
     spOfch_max_nl = zeros(length(λch_range))
@@ -47,7 +54,7 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
         λ = λsp(χsp_nλ_r, iωn, mP.Ekin_DMFT, rhs_val, kG, mP)
         spOfch_max_nl[λi] = λ
     end;
-    λch_range_filtered = filter_usable_λsp_of_λch(λch_range, spOfch_max_nl, χsp_min, χch_min; λsp_max=λsp_max, max_λch=Inf)
+    λch_range_filtered = filter_usable_λsp_of_λch(λch_range, spOfch_max_nl, χsp_min, χch_min; λsp_max=λsp_max, λch_max=λch_max)
     λch_range_f = λch_range[λch_range_filtered]
     spOfch_f = spOfch_max_nl[λch_range_filtered]
     return λch_range_f, spOfch_f
@@ -103,12 +110,12 @@ function new_λ_from_c2(c2_res, imp_dens, nlQ_sp, nlQ_ch, locQ_sp, gLoc_fft, λ�
     λsp, λch
 end
 
-function filter_usable_λsp_of_λch(λch_range, λsp_of_λch_data, χsp_min, χch_min; max_λsp=Inf, max_λch=Inf)
+function filter_usable_λsp_of_λch(λch_range, λsp_of_λch_data, χsp_min, χch_min; λsp_max=Inf, λch_max=Inf)
     #TODO: old version., why findmax??? 
     #tmp[isnan.(tmp)] .= 0.0
     #tmp[tmp .> max_λsp] .= 0.0
     #findmax(tmp)[2]:length(λch_range)
-    χch_filter_indices = findall(x -> !isnan(x) && x < max_λch && x > χch_min, λch_range)
-    χsp_filter_indices = findall(x -> !isnan(x) && x < max_λsp && x > χsp_min, λsp_of_λch_data)
+    χch_filter_indices = findall(x -> !isnan(x) && x < λch_max && x > χch_min, λch_range)
+    χsp_filter_indices = findall(x -> !isnan(x) && x < λsp_max && x > χsp_min, λsp_of_λch_data)
     return sort(intersect(χsp_filter_indices, χch_filter_indices))
 end
