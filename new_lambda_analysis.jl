@@ -24,7 +24,7 @@ function find_epot(λch_vals, c2_curve, res)
     return res[sc_ind-1,5], res[sc_ind-1,6], res[sc_ind,5], res[sc_ind,6]
 end
 
-function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG, mP, sP; max_λsp=10.0, λch_max=10.0, n_λch=50, fine_grid=[])
+function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG, mP, sP; λsp_max=20.0, λch_max=30.0, n_λch=50, fine_grid=[])
     ωindices = (sP.dbg_full_eom_omega) ? (1:size(nlQ_sp.χ,2)) : intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
     iωn = 1im .* 2 .* (-sP.n_iω:sP.n_iω)[ωindices] .* π ./ mP.β
     nh  = ceil(Int64, size(nlQ_sp.χ,2)/2)
@@ -47,7 +47,7 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
         λ = λsp(χsp_nλ_r, iωn, mP.Ekin_DMFT, rhs_val, kG, mP)
         spOfch_max_nl[λi] = λ
     end;
-    λch_range_filtered = filter_usable_λsp_of_λch(λch_range, spOfch_max_nl; max_λsp=max_λsp)
+    λch_range_filtered = filter_usable_λsp_of_λch(λch_range, spOfch_max_nl, χsp_min, χch_min; λsp_max=λsp_max, max_λch=Inf)
     λch_range_f = λch_range[λch_range_filtered]
     spOfch_f = spOfch_max_nl[λch_range_filtered]
     return λch_range_f, spOfch_f
@@ -103,11 +103,12 @@ function new_λ_from_c2(c2_res, imp_dens, nlQ_sp, nlQ_ch, locQ_sp, gLoc_fft, λ�
     λsp, λch
 end
 
-function filter_usable_λsp_of_λch(λch_range, λsp_of_λch_data; max_λsp=Inf)
+function filter_usable_λsp_of_λch(λch_range, λsp_of_λch_data, χsp_min, χch_min; max_λsp=Inf, max_λch=Inf)
     #TODO: old version., why findmax??? 
     #tmp[isnan.(tmp)] .= 0.0
     #tmp[tmp .> max_λsp] .= 0.0
     #findmax(tmp)[2]:length(λch_range)
-    tmp = deepcopy(λsp_of_λch_data)
-    tmp = findall(x-> !isnan(x) && x < max_λsp, tmp)
+    χch_filter_indices = findall(x -> !isnan(x) && x < max_λch && x > χch_min, λch_range)
+    χsp_filter_indices = findall(x -> !isnan(x) && x < max_λsp && x > χsp_min, λsp_of_λch_data)
+    return sort(intersect(χsp_filter_indices, χch_filter_indices))
 end
