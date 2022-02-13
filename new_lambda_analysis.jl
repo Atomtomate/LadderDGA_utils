@@ -31,8 +31,6 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
     χsp_min    = -minimum(1 ./ real.(nlQ_sp.χ[:,nh]))
     χch_min    = -minimum(1 ./ real.(nlQ_ch.χ[:,nh]))
 
-    println(collect(range(χch_min,λch_max,n_λch)))
-    println(collect(fine_grid))
     λch_range = Float64.(sort(union(range(χch_min,λch_max,n_λch), [0], fine_grid)))
     spOfch_max_nl = zeros(length(λch_range))
 
@@ -49,8 +47,6 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
         λ = λsp(χsp_nλ_r, iωn, mP.Ekin_DMFT, rhs_val, kG, mP)
         spOfch_max_nl[λi] = λ
     end;
-    println(λch_range)
-    println(spOfch_max_nl)
     λch_range_filtered = filter_usable_λsp_of_λch(λch_range, spOfch_max_nl; max_λsp=max_λsp)
     λch_range_f = λch_range[λch_range_filtered]
     spOfch_f = spOfch_max_nl[λch_range_filtered]
@@ -69,7 +65,7 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
     res = Array{Float64, 2}(undef, length(λch_range), 6)
     ωindices = (sP.dbg_full_eom_omega) ? (1:size(nlQ_sp.χ,2)) : intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
     lur = length(ωindices)
-    νmax = floor(Int,3*lur/8)
+    νmax = floor(Int,5*lur/16)
     if νmax > 5
         iωn = 1im .* 2 .* (-sP.n_iω:sP.n_iω)[ωindices] .* π ./ mP.β
         nlQ_sp_λ = deepcopy(nlQ_sp)
@@ -80,11 +76,10 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
             χ_λ!(nlQ_ch_λ.χ, nlQ_ch.χ, λ[2])
             Σ_ladder = calc_Σ(nlQ_sp_λ, nlQ_ch_λ, λ₀, Gνω, kG, mP, sP)[:,0:νmax]
             #Σ_ladder = Σ_loc_correction(Σ_ladder, Σ_ladderLoc, Σ_loc);
-            
+            E_kin, E_pot = calc_E(Σ_ladder.parent, kG, mP, sP)
             χupup_ω = subtract_tail(0.5 * kintegrate(kG,nlQ_ch_λ.χ .+ nlQ_sp_λ.χ,1)[1,ωindices], mP.Ekin_DMFT, iωn)
             χupdo_ω = 0.5 * kintegrate(kG,nlQ_ch_λ.χ .- nlQ_sp_λ.χ,1)[1,ωindices]
-            E_kin, E_pot = calc_E(Σ_ladder.parent, kG, mP, sP)
-            lhs_c1 = real(sum(χupup_ω))/mP.β - E_kin*mP.β/12
+            lhs_c1 = real(sum(χupup_ω))/mP.β - mP.Ekin_DMFT*mP.β/12
             lhs_c2 = real(sum(χupdo_ω))/mP.β
             rhs_c1 = mP.n/2 * (1 - mP.n/2)
             rhs_c2 = E_pot/mP.U - (mP.n/2) * (mP.n/2)
@@ -114,80 +109,5 @@ function filter_usable_λsp_of_λch(λch_range, λsp_of_λch_data; max_λsp=Inf)
     #tmp[tmp .> max_λsp] .= 0.0
     #findmax(tmp)[2]:length(λch_range)
     tmp = deepcopy(λsp_of_λch_data)
-    tmp = filter(x-> !isnan(x) && x < max_λsp, tmp)
-end
-
-
-
-function E_pot_test(λsp, λnew, bubble, nlQ_sp, nlQ_ch, Σ_ladder_loc, kn, gLoc, gLoc_fft, Σ_loc, Fsp, kG, mP, sP)
-    res = try
-    #TODO: DO NOT HARDCODE LATTICE TYPE!!!
-    mP.Epot_DMFT
-    gL = transpose(LadderDGA.flatten_2D(gLoc[sP.fft_offset:(sP.fft_offset+299)]));
-    sL = Array{ComplexF64,2}(undef, length(kG.kMult), 300)
-    for i in 1:300
-        sL[:,i] .= Σ_loc[i]
-    end
-
-    Ek1, Ep1 = calc_E(sL, kG, mP, sP)
-
-    # local
-    #bubbleLoc = calc_bubble(gImp, kGridLoc, mP, sP);
-    #locQ_sp = calc_χ_trilex(impQ_sp.Γ, bubbleLoc, kGridLoc, mP.U, mP, sP);
-    #locQ_ch = calc_χ_trilex(impQ_ch.Γ, bubbleLoc, kGridLoc, -mP.U, mP, sP);
-    #Σ_ladder_loc = calc_Σ(locQ_sp, locQ_ch, bubbleLoc, gImp, Fsp, kGridLoc, mP, sP)
-    # lambda
-    nlQ_sp_λsp = χ_λ(nlQ_sp, λsp)
-    
-    nlQ_sp_λnew = χ_λ(nlQ_sp, λnew[1])
-    nlQ_ch_λnew = χ_λ(nlQ_ch, λnew[2])
-    
-    # Self energies
-    ωindices = intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
-    νmax = floor(Int,length(ωindices)/3)
-
-    Σ_ladder = calc_Σ(nlQ_sp, nlQ_ch, bubble, gLoc_fft, Fsp, kG, mP, sP)[:,1:νmax]
-    Σ_ladder = Σ_loc_correction(Σ_ladder, Σ_ladder_loc, Σ_loc);
-    E_kin_lDGA,E_pot_lDGA = LadderDGA.calc_E(Σ_ladder, kG, mP, sP)
-
-    Σ_ladder_λsp = calc_Σ(nlQ_sp_λsp, nlQ_ch, bubble, gLoc_fft, Fsp, kG, mP, sP)[:,1:νmax]
-    Σ_ladder_λsp = Σ_loc_correction(Σ_ladder_λsp, Σ_ladder_loc, Σ_loc);
-    E_kin_lDGA_λsp, E_pot_lDGA_λsp = LadderDGA.calc_E(Σ_ladder_λsp, kG, mP, sP)
-
-    Σ_ladder_λnew = calc_Σ(nlQ_sp_λnew, nlQ_ch_λnew, bubble, gLoc_fft, Fsp, kG, mP, sP)[:,1:νmax]
-    Σ_ladder_λnew = Σ_loc_correction(Σ_ladder_λnew, Σ_ladder_loc, Σ_loc);
-    E_kin_lDGA_λnew, E_pot_lDGA_λnew = LadderDGA.calc_E(Σ_ladder_λnew, kG, mP, sP)
-
-    
-    # chi
-    χupdo_ω = real.(kintegrate(kG, nlQ_ch.χ .- nlQ_sp.χ, 1)[1,ωindices])
-    E_pot3 = real(sum(χupdo_ω)/(2*mP.β)) + (mP.n/2)^2
-
-    χupdo_λsp_ω = real.(kintegrate(kG, nlQ_ch.χ .- nlQ_sp_λsp.χ, 1)[1,ωindices])
-    E_pot3_λsp = real(sum(χupdo_λsp_ω)/(2*mP.β)) + (mP.n/2)^2
-    
-    χupdo_λnew_ω = real.(kintegrate(kG, nlQ_ch_λnew.χ .- nlQ_sp_λnew.χ, 1)[1,ωindices])
-    E_pot3_λnew = real(sum(χupdo_λnew_ω)/(2*mP.β)) + (mP.n/2)^2
-
-    println("\n ============================================= \n")
-    println(mP)
-    println("U<n_up n_do >                 = $(mP.Epot_DMFT)")
-    println("∑_ν G_loc Σ_loc               = $(Ep1)")
-    println("1/(β U) ∑_ν G_{λ=0} Σ_{λ=0}   = $(E_pot_lDGA/mP.U)")
-    println("∑_{ωq} χ^{λ=0}_{updo} + n²/4  = $(E_pot3)")
-    println("1/(β U) ∑_ν G_λsp Σ_λsp       = $(E_pot_lDGA_λsp/mP.U)")
-    println("∑_{ωq} χ^{λsp}_{updo} + n²/4  = $(E_pot3_λsp)")
-    println("1/(β U) ∑_ν G_λnew Σ_λnew     = $(E_pot_lDGA_λnew/mP.U)")
-    println("∑_{ωq} χ^{λnew}_{updo} + n²/4 = $(E_pot3_λnew)")
-    println(" ============================================= \n")
-        [mP.U, mP.β, kG.Ns, 
-         mP.Epot_DMFT, Ep1, 
-         E_pot_lDGA/mP.U, E_pot3, E_pot_lDGA_λsp/mP.U, E_pot3_λsp, E_pot_lDGA_λnew/mP.U, E_pot3_λnew,
-         nlQ_sp.χ, nlQ_ch.χ]
-    catch e
-        println(stderr, "caught error: ", e)
-        [mP.U, mP.β, kG.Ns, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN,
-         Matrix{ComplexF64}[], Matrix{ComplexF64}[]]
-    end
-    return res
+    tmp = findall(x-> !isnan(x) && x < max_λsp, tmp)
 end
