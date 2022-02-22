@@ -1,5 +1,3 @@
-using LadderDGA
-
 function find_zero(λch_vals::AbstractVector, c2_curve::AbstractVector)
     yvals = c2_curve
     xvals = λch_vals
@@ -31,9 +29,9 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
     #TODO: find reason for extremely large χch_min at U>3
     χsp_min    = -minimum(1 ./ real.(nlQ_sp.χ[:,nh]))
     χch_min    = -minimum(1 ./ real.(nlQ_ch.χ[:,nh]))
-    χch_min = if χch_min > 20
-        println("WARNING: found χ inv min = $χch_min. Resetting to -100!")
-        -100.0
+    χch_min = if χch_min > 500
+        println("WARNING: found χ inv min = $χch_min. Resetting to -1!")
+        -1.0
     else
         χch_min
     end
