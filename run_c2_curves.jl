@@ -74,6 +74,7 @@ flush(stdout)
         println("U/β ($(mP.U)/$(mP.β)): νmax = $νmax")
         # DMFT Energies
         Epot_DMFT_0 = mP.Epot_DMFT
+        Ekin_DMFT_0 = mP.Ekin_DMFT
         Σ_lDGA = calc_Σ(nlQ_sp_λ,nlQ_ch_λ,λ₀,in_f["gLoc_fft"],kG,mP, sP)
         Ekin_DMFT_1, Epot_DMFT_1 = calc_E(Σ_lDGA.parent[:,1:νmax], kG, mP, sP)
         Epot_DMFT_2 = real(0.5 * mP.U * sum(kintegrate(kG,nlQ_ch_λ.χ .- nlQ_sp_λ.χ,1)) / mP.β + mP.U * mP.n^2/4)
@@ -113,7 +114,7 @@ flush(stdout)
         println("U/β ($(mP.U)/$(mP.β)): c2 done. found λsp, λch (coarse/fine) = $(λsp_coarse)/$(λsp_new), $(λch_coarse)/$(λch_new).\nEpot: $(Epot_lDGA_λspch_1) / $(Epot_lDGA_λspch_2)")
         flush(stdout)
         # E_pot
-        return res, λsp_new, λch_new, λnew_nlsolve[1], λnew_nlsolve[2], Epot_DMFT_0, Epot_DMFT_1, Epot_DMFT_2, Epot_lDGA_λsp_1, Epot_lDGA_λsp_2, Epot_lDGA_λspch_1, Epot_lDGA_λspch_2, Ekin_DMFT_1, Ekin_lDGA_λsp_1, Ekin_lDGA_λspch_1
+        return res, λsp_new, λch_new, λnew_nlsolve[1], λnew_nlsolve[2], Epot_DMFT_0, Epot_DMFT_1, Epot_DMFT_2, Epot_lDGA_λsp_1, Epot_lDGA_λsp_2, Epot_lDGA_λspch_1, Epot_lDGA_λspch_2, Ekin_DMFT_0, Ekin_DMFT_1, Ekin_lDGA_λsp_1, Ekin_lDGA_λspch_1
     end
 end
 
