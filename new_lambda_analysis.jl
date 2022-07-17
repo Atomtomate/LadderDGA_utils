@@ -22,7 +22,8 @@ function find_epot(λch_vals, c2_curve, res)
     return res[sc_ind,5], res[sc_ind,6], res[sc_ind+1,5], res[sc_ind+1,6]
 end
 
-function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG, mP, sP; λsp_max=20.0, λch_max=30.0, n_λch=50, fine_grid=[])
+function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG, mP, sP; λsp_max=10.0, λch_max=1000.0, n_λch=50, fine_grid=[],
+                    range_spacing_exp=4.0)
     ωindices = (sP.dbg_full_eom_omega) ? (1:size(nlQ_sp.χ,2)) : intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
     iωn = 1im .* 2 .* (-sP.n_iω:sP.n_iω)[ωindices] .* π ./ mP.β
     nh  = ceil(Int64, size(nlQ_sp.χ,2)/2)
@@ -31,12 +32,17 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
     χch_min    = -minimum(1 ./ real.(nlQ_ch.χ[:,nh]))
     χch_min = if χch_min > 500
         println("WARNING: found χ inv min = $χch_min. Resetting to -1!")
-        -1.0
+        -5.0
     else
         χch_min
     end
+    @warn "found χsp_min: " χsp_min ", χch_min" χch_min
 
-    λch_range = Float64.(sort(union(range(χch_min,λch_max,n_λch), [0], fine_grid)))
+    # Construct log spacing (function is smooth for large λch
+    range_shift = -χch_min
+    r = range(χch_min+range_shift,(λch_max+range_shift)^(1/range_spacing_exp),n_λch).^range_spacing_exp .- range_shift
+    λch_range = Float64.(sort(union(r, [0], fine_grid)))
+    @warn "constructed range: " λch_range
     spOfch_max_nl = zeros(length(λch_range))
 
     χsp_nλ_r = real.(deepcopy(nlQ_sp.χ[:,ωindices]))
@@ -52,8 +58,13 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
         λ = λsp(χsp_nλ_r, iωn, mP.Ekin_DMFT, rhs_val, kG, mP)
         spOfch_max_nl[λi] = λ
     end;
-    λch_range_filtered = filter_usable_λsp_of_λch(λch_range, spOfch_max_nl, χsp_min, χch_min; λsp_max=λsp_max, λch_max=λch_max)
+    @warn "lsp_of_ch" spOfch_max_nl
+    #DBG: deactivated filter by setting min to -Inf
+    λch_range_filtered = filter_usable_λsp_of_λch(λch_range, spOfch_max_nl, -Inf, -Inf; λsp_max=λsp_max, λch_max=λch_max)
+    #λch_range_filtered = filter_usable_λsp_of_λch(λch_range, spOfch_max_nl, χsp_min, χch_min; λsp_max=λsp_max, λch_max=λch_max)
     λch_range_f = λch_range[λch_range_filtered]
+
+    @warn "filtered range: " λch_range_f
     spOfch_f = spOfch_max_nl[λch_range_filtered]
     return λch_range_f, spOfch_f
 end
