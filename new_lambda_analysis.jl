@@ -22,14 +22,14 @@ function find_epot(λch_vals, c2_curve, res)
     return res[sc_ind,5], res[sc_ind,6], res[sc_ind+1,5], res[sc_ind+1,6]
 end
 
-function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG, mP, sP; λsp_max=10.0, λch_max=1000.0, n_λch=50, fine_grid=[],
+function λsp_of_λch(χsp, χch, kG, mP, sP; λsp_max=10.0, λch_max=1000.0, n_λch=50, fine_grid=[],
                     range_spacing_exp=4.0)
-    ωindices = (sP.dbg_full_eom_omega) ? (1:size(nlQ_sp.χ,2)) : intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
+    ωindices = (sP.dbg_full_eom_omega) ? (1:size(χsp.data,2)) : intersect(χsp.usable_ω, χch.usable_ω)
     iωn = 1im .* 2 .* (-sP.n_iω:sP.n_iω)[ωindices] .* π ./ mP.β
-    nh  = ceil(Int64, size(nlQ_sp.χ,2)/2)
+    nh  = ceil(Int64, size(χsp.data,2)/2)
     #TODO: find reason for extremely large χch_min at U>3
-    χsp_min    = -minimum(1 ./ real.(nlQ_sp.χ[:,nh]))
-    χch_min    = -minimum(1 ./ real.(nlQ_ch.χ[:,nh]))
+    χsp_min    = -minimum(1 ./ real.(χsp.data[:,nh]))
+    χch_min    = -minimum(1 ./ real.(χch.data[:,nh]))
     χch_min = if χch_min > 500
         println("WARNING: found χ inv min = $χch_min. Resetting to -1!")
         -5.0
@@ -45,8 +45,8 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
     @warn "constructed range: " λch_range
     spOfch_max_nl = zeros(length(λch_range))
 
-    χsp_nλ_r = real.(deepcopy(nlQ_sp.χ[:,ωindices]))
-    χch_nλ_r = real.(deepcopy(nlQ_ch.χ[:,ωindices]))
+    χsp_nλ_r = real.(deepcopy(χsp.data[:,ωindices]))
+    χch_nλ_r = real.(deepcopy(χch.data[:,ωindices]))
     χch_λ = similar(χch_nλ_r)
 
     for (λi,λchi) in enumerate(λch_range)
@@ -70,7 +70,7 @@ function λsp_of_λch(nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities, kG
 end
 
 function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::AbstractArray{Float64,1},
-                        nlQ_sp::NonLocalQuantities, nlQ_ch::NonLocalQuantities,
+                        χsp::χT, χch::χT, γsp::γT, γch::γT,
                         Gνω::GνqT, λ₀::AbstractArray{ComplexF64,3}, 
                         kG, mP::ModelParameters, sP::SimulationParameters)
     println("starting $(mP)")
@@ -79,22 +79,22 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
     flush(stderr)
     # Prepare data
     res = Array{Float64, 2}(undef, length(λch_range), 6)
-    ωindices = (sP.dbg_full_eom_omega) ? (1:size(nlQ_sp.χ,2)) : intersect(nlQ_sp.usable_ω, nlQ_ch.usable_ω)
+    ωindices = (sP.dbg_full_eom_omega) ? (1:size(χsp.data,2)) : intersect(χsp.usable_ω, χch.usable_ω)
     lur = length(ωindices)
     νmax = floor(Int,5*lur/16)
     if νmax > 5
         iωn = 1im .* 2 .* (-sP.n_iω:sP.n_iω)[ωindices] .* π ./ mP.β
-        nlQ_sp_λ = deepcopy(nlQ_sp)
-        nlQ_ch_λ = deepcopy(nlQ_ch)
+        χsp_λ = deepcopy(χsp)
+        χch_λ = deepcopy(χch)
         for i in 1:length(λch_range)
             λ = [spOfch[i], λch_range[i]]
-            χ_λ!(nlQ_sp_λ.χ, nlQ_sp.χ, λ[1])
-            χ_λ!(nlQ_ch_λ.χ, nlQ_ch.χ, λ[2])
-            Σ_ladder = calc_Σ(nlQ_sp_λ, nlQ_ch_λ, λ₀, Gνω, kG, mP, sP)[:,0:νmax]
+            χ_λ!(χsp_λ.χ, χsp.χ, λ[1])
+            χ_λ!(χch_λ.χ, χch.χ, λ[2])
+            Σ_ladder = calc_Σ(χsp, χch, γsp, γch, λ₀, Gνω, kG, mP, sP)[:,0:νmax]
             #Σ_ladder = Σ_loc_correction(Σ_ladder, Σ_ladderLoc, Σ_loc);
             E_kin, E_pot = calc_E(Σ_ladder.parent, kG, mP, sP)
-            χupup_ω = subtract_tail(0.5 * kintegrate(kG,nlQ_ch_λ.χ .+ nlQ_sp_λ.χ,1)[1,ωindices], mP.Ekin_DMFT, iωn)
-            χupdo_ω = 0.5 * kintegrate(kG,nlQ_ch_λ.χ .- nlQ_sp_λ.χ,1)[1,ωindices]
+            χupup_ω = subtract_tail(0.5 * kintegrate(kG,χch_λ.data .+ χsp_λ.data,1)[1,ωindices], mP.Ekin_DMFT, iωn)
+            χupdo_ω = 0.5 * kintegrate(kG,χch_λ.data .- χsp_λ.data,1)[1,ωindices]
             lhs_c1 = real(sum(χupup_ω))/mP.β - mP.Ekin_DMFT*mP.β/12
             lhs_c2 = real(sum(χupdo_ω))/mP.β
             rhs_c1 = mP.n/2 * (1 - mP.n/2)
@@ -103,20 +103,6 @@ function c2_along_λsp_of_λch(λch_range::AbstractArray{Float64,1}, spOfch::Abs
         end
     end
     return res
-end
-
-function new_λ_from_c2(c2_res, imp_dens, nlQ_sp, nlQ_ch, locQ_sp, gLoc_fft, λ₀, kG, mP, sP)
-    λsp, λch = if size(c2_res,1) >= 1
-        λch = find_zero(c2_res[:,2], c2_res[:,5] .- c2_res[:,6])
-        nlQ_ch_λ = deepcopy(nlQ_ch)
-        nlQ_ch_λ.χ = LadderDGA.χ_λ(nlQ_ch.χ, λch)
-        nlQ_ch_λ.λ = λch
-        λsp = LadderDGA.λ_correction(:sp, imp_dens, nlQ_sp, nlQ_ch_λ, gLoc_fft, λ₀, kG, mP, sP)
-        λsp, λch
-    else
-        NaN, NaN
-    end
-    λsp, λch
 end
 
 function filter_usable_λsp_of_λch(λch_range, λsp_of_λch_data, χsp_min, χch_min; λsp_max=Inf, λch_max=Inf)
