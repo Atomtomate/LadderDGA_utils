@@ -4,10 +4,11 @@ using LinearAlgebra
 using HDF5
 
 input_str = ARGS[1]
-
 β = tryparse(Float64,ARGS[2])
 U = tryparse(Float64,ARGS[3])
 μ = tryparse(Float64,ARGS[4])
+outf = ARGS[5]
+
 
 iν_in, g, g_imp, Δ_in  = if endswith(input_str, ".dat")
     g_in     = readdlm(g_in_f)
@@ -49,7 +50,7 @@ best_Vp = nothing
 best_range = nothing
 
 
-for Nν_i in 39:40
+for Nν_i in 10:30
     range = (nh-Nν_i):(nh+Nν_i-1)
     Δ_i  = Δ[range]
     ν_i = iν_in[range]
@@ -102,7 +103,7 @@ Eps(k)
    $(best_Vp[4])
   $μ          #chemical potential
 """
-open("hubb.andpar","w") do io 
+open(outf,"w") do io 
     print(io,out)
 end
 
