@@ -41,8 +41,8 @@ iν_in, g, g_imp = if endswith(input_str, ".dat")
     iν_in, g, g_imp = 1im * g_in[:,1], g_in[:,2] .+ 1im * g_in[:,3], nothing;
 elseif endswith(input_str, ".hdf5") 
     f    = h5open(ARGS[1])
-    g_in = read(f["dmft-last/ineq-001/g0iw/value"])
-    g_imp_in = read(f["dmft-last/ineq-001/g0iw/value"])
+    g_in = read(f["dmft-last/ineq-001/giw/value"])
+    g_imp_in = read(f["dmft-last/ineq-001/giw/value"])
     g    = (g_in[:,1,1] .+ g_in[:,2,1] ) ./ 2
     g_imp    = (g_imp_in[:,1,1] .+ g_imp_in[:,2,1] ) ./ 2
     iν_in = read(f[".axes/iw"])

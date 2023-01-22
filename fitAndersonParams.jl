@@ -1,4 +1,5 @@
 using LsqFit
+# using Optim
 using DelimitedFiles
 using LinearAlgebra
 using HDF5
@@ -7,6 +8,7 @@ input_str = ARGS[1]
 β = tryparse(Float64,ARGS[2])
 U = tryparse(Float64,ARGS[3])
 μ = tryparse(Float64,ARGS[4])
+N = 4#tryparse(Int, ARGS[5])
 outf = ARGS[5]
 
 
@@ -19,7 +21,7 @@ elseif endswith(input_str, ".hdf5")
     g_imp_in = read(f["dmft-last/ineq-001/g0iw/value"])
     #g    = (g_in[:,1,1]) 
     #g_imp    = (g_imp_in[:,1,1]) 
-    Δ_in_tmp = read(f["dmft-last/ineq-001/siw/value"])
+    Δ_in_tmp = read(f["dmft-last/ineq-001/fiw/value"])
     Δ_in = (Δ_in_tmp[:,1,1] .+ Δ_in_tmp[:,2,1]) ./ 2
     g    = (g_in[:,1,1] .+ g_in[:,2,1] ) ./ 2
     g_imp    = (g_imp_in[:,1,1] .+ g_imp_in[:,2,1] ) ./ 2
@@ -30,36 +32,45 @@ else
 end
 
 nh = floor(Int, length(iν_in)/2 + 1)
-Δ        = -(1 ./ g .- iν_in .- μ);
+Δ        =  conj.(-1 ./ g .+ iν_in .+ μ);
 #println(sum(abs.(Δ[950:1050] .- Δ_in[950:1050])))
 #Δ = Δ_in
 function model_ED(iν, p)
-    Δ_fit = zeros(length(iν),2)
+    Δ_fit = zeros(ComplexF64,length(iν))
     for (i,νn) in enumerate(iν)
-        tmp  = sum(p[5:8] .* conj(p[5:8]) ./ (νn .- p[1:4]))
-        Δ_fit[i,1] = real(tmp)
-        Δ_fit[i,2] = imag(tmp)
+        tmp  = sum((p[(N+1):end] .^ 2) ./ (νn .- p[1:N]))
+        Δ_fit[i] = tmp
     end
-    return Δ_fit[:]
+    return conj.(Δ_fit)
 end
-model_ED_hf(iν, p) = - 2 .* iν .* sum(p[3:4] .^ 2 ./ (transpose(iν .^ 2) .+ p[1:2] .^ 2), dims=1)[1,:]
+
+function model_ED_real(iν, p)
+    Δ_fit = zeros(ComplexF64,length(iν))
+    for (i,νn) in enumerate(iν)
+        tmp  = sum((p[(N+1):end] .^ 2) ./ (νn .- p[1:N]))
+        Δ_fit[i] = tmp
+    end
+    return vcat(real(Δ_fit), -imag(Δ_fit))
+end
+#model_ED_hf(iν, p) = - 2 .* iν .* sum(p[3:4] .^ 2 ./ (transpose(iν .^ 2) .+ p[1:2] .^ 2), dims=1)[1,:]
 best_N = 0
 best_check = Inf
+best_fit = nothing
 best_ϵp = nothing
 best_Vp = nothing
 best_range = nothing
 
 
-for Nν_i in 10:30
-    range = (nh-Nν_i):(nh+Nν_i-1)
-    Δ_i  = Δ[range]
-    ν_i = iν_in[range]
-
+# for Nν_i in 100:300
+Nν_i = 200
+    νrange = (nh-Nν_i):(nh+Nν_i-1)
+    Δ_i  = Δ[νrange]
+    ν_i = iν_in[νrange]
+    p0 = vcat(range(-U/2,U/2,length=N),range(0.1,1.0,length=N))
     #fit3 = curve_fit(model_ED_hf, imag.(ν_i), imag.(Δ_i), [0.25, 0.25, -1.3, -0.5,])
-    fit = curve_fit(model_ED, ν_i, vcat(real(Δ_i),imag(Δ_i)), [-0.25, -0.10, 0.15, 0.25, 0.1, 0.2, 0.5, 1.0])
-    ϵp = round.([fit.param[1], fit.param[2], fit.param[3], fit.param[4]], digits=15)
-    Vp = round.([fit.param[5], fit.param[6], fit.param[7], fit.param[8]], digits=15)
-
+    fit = curve_fit(model_ED_real, ν_i, vcat(real(Δ_i),imag(Δ_i)), p0)
+    ϵp = round.(fit.param[1:N], digits=15)
+    Vp = round.(fit.param[(N+1):end], digits=15)
     # ϵp = round.([fit3.param[1], fit3.param[2], -fit3.param[1], -fit3.param[2]], digits=15)
     # Vp = round.([fit3.param[3], fit3.param[4], fit3.param[3], fit3.param[4]], digits=15)
     check = abs(sum(Vp .^ 2) - 0.25)
@@ -69,10 +80,11 @@ for Nν_i in 10:30
         global best_check = check
         global best_ϵp = ϵp
         global best_Vp = Vp
-        global best_range = range 
+        global best_range = νrange 
+        global best_fit = fit
     end
     println("N = $Nν_i: sum(V^2_k) - 0.25 = $(round(check,digits=6))")
-end
+# end
 
 println("    Anderson Parameter Checks: ")
 println("   ============================   ")
@@ -82,33 +94,34 @@ println("3. min(|e_k|)       = $(round(minimum(abs.(best_ϵp)), digits=4))")
 println("4. min(|e_i - e_j|) = $(round(minimum(abs.(best_ϵp .- best_ϵp')  + Inf .* I ), digits=4))")
 println("   ============================   ")
 
-out = """
-           ========================================
-               1-band            30-Sep-95 LANCZOS
-            ========================================
-NSITE     5 IWMAX32768
-  $β d0, -12.0, 12.0, 0.007
-c ns,imaxmu,deltamu, # iterations, conv.param.
-  5, 0, 0.d0, 80,  1.d-14
-c ifix(0,1), <n>,   inew, iauto
-Eps(k)
-   $(best_ϵp[1])
-   $(best_ϵp[2])
-   $(best_ϵp[3])
-   $(best_ϵp[4])
- tpar(k)
-   $(best_Vp[1])
-   $(best_Vp[2])
-   $(best_Vp[3])
-   $(best_Vp[4])
-  $μ          #chemical potential
-"""
-open(outf,"w") do io 
-    print(io,out)
+function write_andpar(outf, best_ϵp, best_Vp)
+    out = """
+               ========================================
+                   1-band            30-Sep-95 LANCZOS
+                ========================================
+    NSITE     5 IWMAX32768
+      $β d0, -12.0, 12.0, 0.007
+    c ns,imaxmu,deltamu, # iterations, conv.param.
+      5, 0, 0.d0, 80,  1.d-14
+    c ifix(0,1), <n>,   inew, iauto
+    Eps(k)
+    """
+    for ϵki in best_ϵp
+        out = out * "$ϵki \n"
+    end
+    out = out * "tpar(k)\n"
+    for Vki in best_Vp
+        out = out * "$Vki \n"
+    end
+    out = out * "$μ"
+    open(outf,"w") do io 
+        print(io,out)
+    end
 end
 
 
 println("Anderson Parameters: \n", best_ϵp, "\n", best_Vp)
+write_andpar(outf, best_ϵp, best_Vp)
 # run_dir = pwd()
 # include("../ed_consistency.jl")
 # println("Anderson Parameters: \n")
