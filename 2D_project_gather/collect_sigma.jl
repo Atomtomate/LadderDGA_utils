@@ -40,18 +40,23 @@ jldopen(out_fname*".jld2", "a+") do f_out
                 f_out[key*"/ndens"] = ndens
                 f_out[key*"/sP"] = sP
                 f_out[key*"/mP"] = mP
-                f_out[key*"/Σ_ladder"] = f["Σ_ladder"]
+                f_out[key*"/Σ_loc"] = f["Σ_loc"]
                 f_out[key*"/Σ_ladder_m"] = f["Σ_ladder_m"]
                 f_out[key*"/Σ_ladder_dm"] = f["Σ_ladder_dm"]
+                f_out[key*"/Σ_ladder_m_sc"] = f["Σ_ladder_m_sc"]
                 f_out[key*"/Σ_ladder_dm_sc"] = f["Σ_ladder_dm_sc"]
-                f_out[key*"/gLoc_sc"] = f["gLoc_sc"]
-                f_out[key*"/E_pot_sc"] = f["E_pot_sc"]
-                f_out[key*"/μsc"] = f["μsc"]
-                f_out[key*"/sc_converged"] = f["sc_converged"]
-                f_out[key*"/ef_dmft"] = f["ef_dmft"]
+                f_out[key*"/Σ_ladder_m_tsc"] = f["Σ_ladder_m_tsc"]
+                f_out[key*"/Σ_ladder_dm_tsc"] = f["Σ_ladder_dm_tsc"]
+                f_out[key*"/converged_m"] = f["converged_m"]
+                f_out[key*"/converged_m_sc"] = f["converged_m_sc"]
+                f_out[key*"/converged_dm"] = f["converged_dm"]
+                f_out[key*"/converged_dm_sc"] = f["converged_dm_sc"]
+                f_out[key*"/converged_m_tsc"] = f["converged_m_tsc"]
+                f_out[key*"/converged_dm_tsc"] = f["converged_dm_tsc"]
                 f_out[key*"/ef_m"] = f["ef_m"]
                 f_out[key*"/ef_dm"] = f["ef_dm"]
                 f_out[key*"/ef_dm_sc"] = f["ef_dm_sc"]
+                f_out[key*"/ef_dm_tsc"] = f["ef_dm_tsc"]
             end
         end
     end

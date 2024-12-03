@@ -8,15 +8,14 @@ input_str = ARGS[1]
 β = tryparse(Float64,ARGS[2])
 U = tryparse(Float64,ARGS[3])
 μ = tryparse(Float64,ARGS[4])
-N = 4#tryparse(Int, ARGS[5])
-outf = ARGS[5]
+N = tryparse(Int, ARGS[5])
+outf = ARGS[6]
 
 
 iν_in, g, g_imp, Δ_in  = if endswith(input_str, ".dat")
     g_in     = readdlm(g_in_f)
     iν_in, g, g_imp = 1im * g_in[:,1], g_in[:,2] .+ 1im * g_in[:,3], nothing;
-# elseif endswith(input_str, ".hdf5") 
-elseif endswith(input_str, ".hdf5")
+elseif endswith(input_str, ".hdf5") 
     f    = h5open(ARGS[1])
     g_in = read(f["dmft-last/ineq-001/g0iw/value"])
     g_imp_in = read(f["dmft-last/ineq-001/g0iw/value"])
@@ -27,8 +26,6 @@ elseif endswith(input_str, ".hdf5")
     g    = (g_in[:,1,1] .+ g_in[:,2,1] ) ./ 2
     g_imp    = (g_imp_in[:,1,1] .+ g_imp_in[:,2,1] ) ./ 2
     iν_in = read(f[".axes/iw"])
-    close(f)
-    close(f)
     1im * iν_in, g, g_imp, Δ_in
 else
     error("File extension not recognized")
@@ -64,8 +61,8 @@ best_Vp = nothing
 best_range = nothing
 
 
-# for Nν_i in 20:300
-Nν_i = 35
+# for Nν_i in 100:300
+Nν_i = 100
     νrange = (nh-Nν_i):(nh+Nν_i-1)
     Δ_i  = Δ[νrange]
     ν_i = iν_in[νrange]
@@ -127,5 +124,6 @@ println("Anderson Parameters: \n", best_ϵp, "\n", best_Vp)
 write_andpar(outf, best_ϵp, best_Vp)
 # run_dir = pwd()
 # include("../ed_consistency.jl")
+# println("Anderson Parameters: \n")
 # println("ϵp: \n", best_ϵp)
 # println("Vp: \n", best_Vp)
